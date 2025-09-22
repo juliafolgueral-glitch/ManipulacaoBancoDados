@@ -1,0 +1,185 @@
+---
+title: "Desafio 06"
+author: "Julia Folgueral - RA: 277178"
+format:
+  html:
+    self-contained: true
+editor: visual
+---
+
+
+
+# Laboratório 6
+
+1. Baixe o arquivo disco.db e armazene na variável path o caminho completo (pasta) na qual o arquivo foi gravado. Utilize o comando file.path() para combinar a variável path com o nome do arquivo (disco.db) e obter o nome do arquivo com seu respectivo caminho. Armazene este resultado na variável fname.
+
+```{r}
+path <- ".../ME315"   
+
+fname <- file.path(path, "disco.db")
+
+```
+
+2. Utilizando o pacote RSQLite, conecte-se ao arquivo de banco de dados. Armazene a conexão na variável conn.
+
+```{r}
+library(RSQLite)
+```
+
+```{r}
+conn <- dbConnect(SQLite(),'disco.db')
+```
+
+3. Liste as tabelas existentes no banco de dados.
+
+```{r}
+dbListTables(conn)
+```
+
+4. Identifique os nomes de todas as colunas existentes na tabela customers. 
+
+```{r}
+dbListFields(conn, 'customers')
+```
+5. Utilizando apenas SQLite, com o apoio do comando dbGetQuery, identifique quantos clientes estão atualmente cadastrados neste banco de dados.
+
+```{r}
+# Seleciona e conta a quantidade de clientes de customers
+dbGetQuery(conn, "SELECT COUNT(*) AS total_clientes FROM customers;")
+
+```
+
+6. Utilizando apenas SQLite, identifique o número de países diferentes em que moram os clientes encontrados acima.
+
+```{r}
+# Seleciona apenas os países distintos e conta quantos tem
+dbGetQuery(conn, "SELECT COUNT(DISTINCT Country) AS total_paises FROM customers;")
+```
+
+7. Utilizando apenas SQLite, quantos clientes existem por país? A tabela resultante deve conter o nome do país e a respectiva contagem, além de ser ordenada de maneira decrescente pela referida contagem.
+
+```{r}
+dbGetQuery(conn, "
+  SELECT Country, COUNT(*) AS total_clientes
+  FROM customers
+  GROUP BY Country
+  ORDER BY total_clientes DESC;
+")
+
+```
+
+8. Quais são os 5 países com mais clientes registrados? Use apenas SQLite.
+
+```{r}
+dbGetQuery(conn, "
+  SELECT Country, COUNT(*) AS total_clientes
+  FROM customers
+  GROUP BY Country
+  ORDER BY total_clientes DESC
+  LIMIT 5;
+")
+
+```
+
+9. Quais são os países registrados que possuem apenas 6 letras no nome?
+
+```{r}
+dbGetQuery(conn, "
+  SELECT DISTINCT Country
+  FROM customers
+  WHERE LENGTH(Country) = 6;
+")
+
+```
+
+10. Quais foram as músicas compradas por clientes brasileiros?
+
+```{r}
+dbGetQuery(conn, "
+  SELECT DISTINCT t.Name AS Musica
+  FROM customers c
+  JOIN invoices i ON c.CustomerId = i.CustomerId
+  JOIN invoice_items ii ON i.InvoiceId = ii.InvoiceId
+  JOIN tracks t ON ii.TrackId = t.TrackId
+  WHERE c.Country = 'Brazil'
+  ORDER BY t.Name;
+")
+
+# JOIN conecta as tabelas pelo ID correspondente.
+# WHERE c.Country = 'Brazil' filtra apenas os clientes brasileiros.
+# DISTINCT evita músicas repetidas.
+# ORDER BY t.Name coloca em ordem alfabética.
+```
+
+# Perguntas Extras
+
+1. Qual o álbum mais tocado por pais?
+
+```{r}
+dbGetQuery(conn, "
+  WITH AlbumPorPais AS (
+    SELECT 
+      c.Country,
+      a.Title AS Album,
+      COUNT(*) AS total_vendas,
+      ROW_NUMBER() OVER (PARTITION BY c.Country ORDER BY COUNT(*) DESC) AS rn
+    FROM customers c
+    JOIN invoices i ON c.CustomerId = i.CustomerId
+    JOIN invoice_items ii ON i.InvoiceId = ii.InvoiceId
+    JOIN tracks t ON ii.TrackId = t.TrackId
+    JOIN albums a ON t.AlbumId = a.AlbumId
+    GROUP BY c.Country, a.Title
+  )
+  SELECT Country, Album, total_vendas
+  FROM AlbumPorPais
+  WHERE rn = 1
+  ORDER BY Country;
+")
+
+# ROW_NUMBER() OVER (PARTITION BY c.Country ORDER BY COUNT(*) DESC) dá um ranking dos álbuns mais vendidos por país.
+
+# WHERE rn = 1 seleciona apenas o mais vendido em cada país.
+
+# GROUP BY c.Country, a.Title garante a contagem correta de cada álbum por país.
+
+# ORDER BY Country organiza o resultado por país.
+```
+
+2. Qual o artista mais tocado por pais?
+
+```{r}
+dbGetQuery(conn, "
+  WITH ArtistaPorPais AS (
+    SELECT 
+      c.Country,
+      ar.Name AS Artista,
+      COUNT(*) AS total_vendas,
+      ROW_NUMBER() OVER (PARTITION BY c.Country ORDER BY COUNT(*) DESC) AS rn
+    FROM customers c
+    JOIN invoices i ON c.CustomerId = i.CustomerId
+    JOIN invoice_items ii ON i.InvoiceId = ii.InvoiceId
+    JOIN tracks t ON ii.TrackId = t.TrackId
+    JOIN albums al ON t.AlbumId = al.AlbumId
+    JOIN artists ar ON al.ArtistId = ar.ArtistId
+    GROUP BY c.Country, ar.Name
+  )
+  SELECT Country, Artista, total_vendas
+  FROM ArtistaPorPais
+  WHERE rn = 1
+  ORDER BY Country;
+")
+
+# COUNT(*) AS total_vendas conta quantas vezes cada artista foi comprado por país.
+
+# ROW_NUMBER() OVER (PARTITION BY c.Country ORDER BY COUNT(*) DESC) cria o ranking por país.
+
+# WHERE rn = 1 retorna apenas o artista mais comprado em cada país.
+
+# ORDER BY Country organiza o resultado por país.
+```
+
+ 11. Desconecte do banco de dados.
+
+```{r}
+dbDisconnect(conn)
+```
