@@ -1,0 +1,142 @@
+---
+title: "Desafio 4"
+format: 
+  html:
+    self-contained: true
+editor: visual
+---
+
+## Integrantes do Grupo:
+
+Gustavo Coimbra de Souza Teixeira - RA: 237599
+
+Julia Folgueral - RA: 277178
+
+Maria Eduarda Villéla SIlva - RA: 212974
+
+Nicole de Barros Silva - RA: 238935
+
+## Atividade 
+
+ Ao longo desta semana, você deverá desenvolver código em R, utilizando-se de tidyverse, ggplot, leaftlet, ggcal e outros pacotes disponibilizados em HTML Widgets para responder uma questão relacionada ao conjunto de dados flights. Para tanto, considere os seguintes fatos: • Cias Aéreas (AIRLINE) possuem diferentes aeronaves (codificadas em TAIL_NUMBER); • (Exemplo hipotético) No dia 01/01/2015, a aeronave N431WN viaja de BWI para JFK; • (Exemplo hipotético) No dia 02/01/2015, a aeronave N431WN viaja de JFK para ORD‘; • E assim sucessivamente. . . No caso apontado acima, pode-se ver que a aeronave N431WN realizou um trajeto (provavelmente único) durante todo o ano de 2015. Nos dias exemplificados, o trajeto foi BWI-JFK-ORD.
+
+Parte 1: Crie uma função que: a. Receba um valor de TAIL_NUMBER (por exemplo, N431WN); b. Produza uma tabela (tidy) com todos os trajetos realizados pela aeronave (ordenadas por data e hora, contendo todas as colunas do arquivo flights.csv.zip); c. Produza um mapa que apresente todo o trajeto voado pela aeronave ao longo de todo o ano; o trajeto deve ser apresentado de maneira linear no tempo (i.e., segue a sequência do tempo, como no exemplo hipotético dado acima); d. O mapa deve ser decorado com estatísticas do seu interesse (por exemplo, velocidade média do vôo como espessura da linha que conecta os aeroportos envolvidos no trajeto);
+
+```{r}
+# Carregando os pacotes necessários
+library(readr)
+library(dplyr)
+library(lubridate)
+library(leaflet)
+library(RColorBrewer)
+library(scales)
+
+analisa_aeronave <- function(tail_number, arquivo_zip) {
+  
+  # Lê o arquivo de aeroportos
+  airports <- read_csv("airports.csv") %>%
+    select(IATA_CODE, LATITUDE, LONGITUDE)
+  
+  voos_filtrados <- tibble()
+  
+  callback <- function(x, pos) {
+    x %>%
+      filter(TAIL_NUMBER == tail_number) %>%
+      transmute(
+        YEAR, MONTH, DAY, AIRLINE, FLIGHT_NUMBER, TAIL_NUMBER,
+        ORIGIN_AIRPORT, DESTINATION_AIRPORT,
+        DEPARTURE_TIME, ARRIVAL_TIME, DISTANCE, AIR_TIME,
+        FLIGHT_DATE = make_date(YEAR, MONTH, DAY)
+      ) %>%
+      bind_rows(voos_filtrados, .) ->> voos_filtrados
+  }
+  
+  con <- unz(arquivo_zip, "flights.csv")
+  
+  read_csv_chunked(
+    con,
+    callback = SideEffectChunkCallback$new(callback),
+    chunk_size = 100000,
+    progress = TRUE
+  )
+  
+  if (nrow(voos_filtrados) == 0) {
+    warning("Nenhum voo encontrado para a aeronave ", tail_number)
+    return(list(tabela = voos_filtrados, grafico = NULL))
+  }
+  
+  # Ordenar e calcular estatísticas
+  voos_filtrados <- voos_filtrados %>%
+    arrange(FLIGHT_DATE, DEPARTURE_TIME) %>%
+    mutate(
+      VELOCIDADE_MEDIA = ifelse(AIR_TIME > 0, DISTANCE / (AIR_TIME / 60), NA)
+    ) %>%
+    mutate(
+      espessura_linha = scales::rescale(VELOCIDADE_MEDIA, to = c(1, 6), na.rm = TRUE)
+    )
+  
+  # Paleta de cores 
+  paleta <- brewer.pal(12, "Paired")
+  
+  # Criar mapa 
+  mapa <- leaflet(voos_filtrados) %>% addTiles()
+  
+  # adicionar linhas voo a voo
+  for (i in 1:nrow(voos_filtrados)) {
+    origem <- airports %>% filter(IATA_CODE == voos_filtrados$ORIGIN_AIRPORT[i])
+    destino <- airports %>% filter(IATA_CODE == voos_filtrados$DESTINATION_AIRPORT[i])
+    
+    if (nrow(origem) > 0 & nrow(destino) > 0) {
+      mapa <- mapa %>%
+        addPolylines(
+          lng = c(origem$LONGITUDE, destino$LONGITUDE),
+          lat = c(origem$LATITUDE, destino$LATITUDE),
+          weight = voos_filtrados$espessura_linha[i],
+          color = paleta[voos_filtrados$MONTH[i]],
+          opacity = 0.7,
+          popup = paste0(
+            "Voo: ", voos_filtrados$ORIGIN_AIRPORT[i], " → ", voos_filtrados$DESTINATION_AIRPORT[i],
+            "<br>Data: ", voos_filtrados$FLIGHT_DATE[i],
+            "<br>Velocidade média: ", round(voos_filtrados$VELOCIDADE_MEDIA[i], 1), " mph"
+          )
+        )
+    }
+  }
+  
+  # marcadores dos aeroportos visitados
+  aeroportos_visitados <- unique(c(voos_filtrados$ORIGIN_AIRPORT, voos_filtrados$DESTINATION_AIRPORT))
+  coords_aero <- airports %>% filter(IATA_CODE %in% aeroportos_visitados)
+  
+  mapa <- mapa %>%
+    addCircleMarkers(
+      lng = coords_aero$LONGITUDE,
+      lat = coords_aero$LATITUDE,
+      radius = 4,
+      color = "red",
+      popup = coords_aero$IATA_CODE
+    ) %>%
+    # Legenda de cores
+    addLegend(
+      "bottomright",
+      colors = paleta,
+      labels = month.name,
+      title = "Mês do voo",
+      opacity = 0.9
+    )
+  
+  return(list(
+    tabela = voos_filtrados,
+    grafico = mapa
+  ))
+}
+
+# Exemplo de uso
+resultado <- analisa_aeronave("N431WN", "flights.csv.zip")
+
+resultado$tabela
+
+# abrir sempre no navegador (para evitar travar o R)
+resultado$grafico %>% htmlwidgets::saveWidget("mapa.html")
+browseURL("mapa.html")
+
+```
