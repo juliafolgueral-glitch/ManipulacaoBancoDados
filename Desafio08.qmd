@@ -1,0 +1,146 @@
+---
+title: "Desafio 08"
+author: "Julia Folgueral - RA: 277178"
+format: 
+  html:
+      self-contained: true
+editor: visual
+---
+
+```{r}
+# Carregar pacotes necessários
+library(DBI)
+library(RSQLite)
+```
+
+1.  Baixe o arquivo uwmadison.sqlite3. Conecte-se a ele usando o pacote RSQLite, armazenando a conexão em uma variável conn.
+
+```{r}
+# Conectar ao banco
+conn <- dbConnect(SQLite(), dbname = "uwmadison.sqlite3")
+
+# Listar as tabelas existentes para verificar se deu certo:
+dbListTables(conn)
+
+```
+
+2.  Quem são e quantos são os professores que lecionaram disciplinas cujo tópico era estatística (subjects.abbreviation='STAT');
+
+```{r}
+query <- "
+-- Seleciona os professores sem repeti-los (id e nome)
+SELECT DISTINCT i.name
+
+-- Seleciona a tabela de instrutores
+FROM instructors i
+
+-- Junta com a tabela de ensinamentos para saber quais seções cada professor lecionou
+JOIN teachings t ON i.id = t.instructor_id
+
+-- Junta com as seções para pegar os detalhes das turmas
+JOIN sections s ON t.section_uuid = s.uuid
+
+-- Junta com as ofertas de cursos para saber a qual curso cada seção pertence
+JOIN course_offerings co ON s.course_offering_uuid = co.uuid
+
+-- Junta com subject_memberships para saber a qual curso/disciplina pertence.
+JOIN subject_memberships sm ON co.uuid = sm.course_offering_uuid
+
+-- Junta com a tabela subjects para filtrar por estatística
+JOIN subjects sub ON sm.subject_code = sub.code
+
+-- Filtra apenas disciplinas cujo tópico é estatística
+WHERE sub.abbreviation = 'STAT'
+"
+
+# Executar a query
+professores_stat <- dbGetQuery(conn, query)
+
+# Visualizar alguns resultados
+professores_stat
+
+# Contar o total de professores distintos
+n_professores <- nrow(professores_stat)
+n_professores
+```
+
+3.  O GPA americano é definido numa escala de 0 a 4, em que A = 4, AB = 3.5, B = 3, BC = 2.5, C = 2, D = 1 e F = 0. Determinando a nota média de cada oferecimento pela ponderação da quantidade de alunos em cada extrato com os valores numéricos de cada conceito, indique (no que se referente a disciplinas no assunto de estatística):
+
+-   Quem é o professor mais difícil?
+-   Quem é o professor mais fácil?
+-   Qual é a disciplina mais difícil?
+-   Qual é a disciplina mais fácil?
+
+```{r}
+library(dplyr)
+
+# Calcular o GPA ponderado por oferta de STAT
+query_gpa <- "
+SELECT 
+  i.id AS instructor_id,
+  i.name AS instructor_name,
+  c.name AS course_name,
+  (
+    (gd.a_count*4 + gd.ab_count*3.5 + gd.b_count*3 + gd.bc_count*2.5 
+     + gd.c_count*2 + gd.d_count*1 + gd.f_count*0)
+    /
+    (gd.a_count + gd.ab_count + gd.b_count + gd.bc_count + gd.c_count + gd.d_count + gd.f_count)
+  ) AS gpa
+FROM grade_distributions gd
+JOIN sections s ON gd.section_number = s.number AND gd.course_offering_uuid = s.course_offering_uuid
+JOIN course_offerings co ON s.course_offering_uuid = co.uuid
+JOIN subject_memberships sm ON co.uuid = sm.course_offering_uuid
+JOIN subjects sub ON sm.subject_code = sub.code
+JOIN teachings t ON s.uuid = t.section_uuid
+JOIN instructors i ON t.instructor_id = i.id
+JOIN courses c ON co.course_uuid = c.uuid
+WHERE sub.abbreviation = 'STAT'
+"
+
+gpa_stat <- dbGetQuery(conn, query_gpa)
+
+
+# GPA médio por professor (com arredondamento de 4 casas decimais)
+prof_gpa <- gpa_stat %>%
+  group_by(instructor_id, instructor_name) %>%
+  summarise(mean_gpa = round(mean(gpa, na.rm = TRUE), 4), .groups="drop")
+
+# GPA médio por disciplina (com arredondamento de 4 casas decimais)
+disc_gpa <- gpa_stat %>%
+  group_by(course_name) %>%
+  summarise(mean_gpa = round(mean(gpa, na.rm = TRUE), 4), .groups="drop")
+
+# Seleciona os maiores/menores valores
+prof_dificil <- prof_gpa %>%
+  filter(mean_gpa == min(mean_gpa, na.rm = TRUE)) %>%
+  mutate(tipo = "prof_dificil")
+
+prof_facil <- prof_gpa %>%
+  filter(mean_gpa == max(mean_gpa, na.rm = TRUE)) %>%
+  mutate(tipo = "prof_facil")
+
+disc_dificil <- disc_gpa %>%
+  filter(mean_gpa == min(mean_gpa, na.rm = TRUE)) %>%
+  mutate(tipo = "disc_dificil")
+
+disc_facil <- disc_gpa %>%
+  filter(mean_gpa == max(mean_gpa, na.rm = TRUE)) %>%
+  mutate(tipo = "disc_facil")
+
+# Junta tudo em um dataframe
+resumo <- bind_rows(
+  prof_dificil %>% select(tipo, nome = instructor_name, gpa = mean_gpa),
+  prof_facil   %>% select(tipo, nome = instructor_name, gpa = mean_gpa),
+  disc_dificil %>% select(tipo, nome = course_name, gpa = mean_gpa),
+  disc_facil   %>% select(tipo, nome = course_name, gpa = mean_gpa)
+)
+
+resumo
+
+```
+
+4.  Desconecte o banco de dados
+
+```{r}
+dbDisconnect(conn)
+```
