@@ -1,0 +1,59 @@
+---
+title: "Desafio 01"
+author: "Julia Folgueral - RA: 277178"
+format: 
+  html:
+    self-contained: true
+editor: visual
+---
+
+Utilize o conjunto de dados `flights.csv.zip` disponível em <https://www.kaggle.com/usdot/flight-delays> e carregue os dados utilizando as funções:
+
+-   `read.csv()` do pacote `base` do **R**
+-   `read_csv()` do pacote `readr` do **R**
+-   `read_csv()` do `pandas` no **Python**
+
+Qual dessas três formas de carregar os dados é mais rápida? (calcule o tempo exato que demorou cada método em carregar os dados no seu computador)
+
+## Observação: no link acima, baixar o arquivo `flights.csv`, zipar ele (e salvar como `flights.csv.zip`).
+
+Criar um ambiente virtual 'env_me315' e usar ele quando for utilizar Python.
+
+
+```{r}
+library(reticulate)
+
+# Usar o python do sistema
+use_python("C:/Users/Marcia/AppData/Local/Programs/Python/Python312/python.exe", required = TRUE)
+
+# Instala pandas 
+py_install("pandas")
+
+```
+
+
+```{r}
+ini <- Sys.time()
+dados <- read.csv(unz('flights.zip', "flights.csv"))
+fim <- Sys.time()
+fim - ini
+```
+
+```{r}
+library(readr)
+ini <- Sys.time()
+dados <- read_csv('flights.zip')
+fim <- Sys.time()
+fim - ini
+```
+
+```{python}
+import time
+import pandas as pd
+ini = time.time()
+dados = pd.read_csv("flights.zip", compression="zip", header=0, sep=",", low_memory=False)
+fim = time.time()
+fim - ini
+```
+
+Após ler o conjunto de dados das três maneiras, nota-se que a forma mais rápida foi utilizando a função "pd.read_csv()" da biblioteca "pandas" (em python). Usando a base do R, "read.csv()", foi a forma mais demorada. O pacote "readr" do R, "read_csv()", foi muito mais rápida que a base do R, mas não foi mais rápida que utilizando o python.
