@@ -1,0 +1,96 @@
+---
+title: "Desafio 05"
+author: "Julia Folgueral - RA: 277178"
+format: 
+  html: 
+    self-contained: true
+editor: visual
+---
+
+```{r}
+#install.packages("RSQLite")
+```
+
+```{r}
+library(RSQLite)
+```
+
+```{r}
+db = dbConnect(SQLite(),'disco.db')
+db
+```
+
+```{r}
+dbListTables(db)
+dbListFields(db, 'albums')
+```
+
+```{r}
+album_db = dbGetQuery(db,'SELECT * FROM albums') # seleciona tudo (*) da tabela albums 
+head(album_db)
+```
+
+```{r}
+# Selecione as colunas trackid, name, composer e unitprice. Ordene o objeto resultante por unitprice. 
+sql = 'SELECT trackid, name, composer, unitprice FROM tracks ORDER BY unitprice'
+tracks1 = dbGetQuery(db, sql)
+head(tracks1)
+```
+
+```{r}
+# Quais são as cidades de todos os clientes, ordenadas por nome de cidade?
+sql = 'SELECT DISTINCT city FROM customers ORDER BY city'
+city_distinct = dbGetQuery(db, sql)
+head(city_distinct)
+
+```
+
+```{r}
+# Quais são todas as músicas do álbum 1?
+dbGetQuery(db,'SELECT name, albumid FROM tracks WHERE albumid=1')
+```
+
+```{r}
+# Limitando-se a 5 registros, após ordenação por nome, quais são os nomes, ID de álbum e ID de mídia de músicas com mídias de tipo 1 ou 2?
+sql = paste('SELECT name, albumid, mediatypeid FROM tracks','WHERE mediatypeid IN (1, 2)', 'ORDER BY name LIMIT 5')
+dbGetQuery(db, sql)
+
+```
+
+```{r}
+# Quais são as músicas e identificadores de faixa e álbum produzidas pelo artista que identificador 12?
+sql = paste('SELECT trackid, name, albumid FROM tracks','WHERE albumid IN','(SELECT albumid FROM albums WHERE artistid==12)')
+dbGetQuery(db, sql)
+
+```
+
+```{r}
+# Quais são as faixas cujos nomes começam com qualquer caracter seguido de 'ere' e terminam com qualquer expressão?
+sql = "SELECT trackid, name FROM tracks WHERE name GLOB '?ere*'"
+dbGetQuery(db, sql)
+
+```
+
+```{r}
+# Quais são as faixas cujos nomes possuem algum dígito?
+sql = "SELECT trackid, name FROM tracks WHERE name GLOB '*[0-9]*'"
+dbGetQuery(db, sql)
+```
+
+```{r}
+# Quantas faixas por disco?
+sql = 'SELECT albumid, COUNT(trackid) FROM tracks GROUP BY albumid'
+dbGetQuery(db, sql)
+```
+
+```{r}
+# Quantas faixas por disco para o album 1?
+sql = paste('SELECT albumid, COUNT(trackid)', 'FROM tracks GROUP BY albumid', 'HAVING albumid=1')
+dbGetQuery(db, sql)
+```
+
+```{r}
+# Quais são os nomes de cada faixa com os respectivos títulos dos álbums?
+sql = paste('SELECT trackid, name, title FROM tracks', 'INNER JOIN albums ON albums.albumid=tracks.albumid')
+dbGetQuery(db, sql)
+```
