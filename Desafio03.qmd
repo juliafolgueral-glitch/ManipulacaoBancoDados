@@ -1,0 +1,60 @@
+---
+title: "Desafio 03"
+author: "Julia FOlgueral - RA: 277178"
+format: 
+  html: 
+      self-contained: true
+editor: visual
+---
+
+# Leitura de Arquivo JSON
+
+O conjunto de dados “pokemonDB.json” foi obtido no site “Kaggle”, neste link: <https://www.kaggle.com/datasets/divyanshusingh369/complete-pokemon-library-32k-images> -and-csv?select=pokemonDB_dataset.json.
+
+O banco contém 1215 observações e 32 variáveis.
+
+Para ler o arquivo no formato json usando o RStudio, foi necessário instalar o pacote chamado “jsonlite”. Após a instalação do pacote, utilizei o comando read_json(“nome_do_arquivo”). Após fazer isso, obtive como saída uma lista de atributos (várias listas nomeadas). Para transformar em um tibble, foram usadas as bibliotecas “tibble” e “dplyr”. Usando o comando “enframe()” o arquivo foi convertido para tibble, pois essa função transforma a lista nomeada em duas colunas: uma com o nome do pokémon e outra com os atributos. Por fim, usei a função “unnest_wider()”, que expande a coluna de atributos e distribui cada elemento interno em colunas próprias, resultando em um tibble estruturado, no qual cada linha corresponde a um pokémon e cada variável do JSON aparece organizada em colunas.
+
+```{r}
+#install.packages("jsonlite")
+library(jsonlite)
+```
+
+```{r}
+dados_json <- fromJSON("pokemonDB.json")
+#View(dados_json)
+#head(dados_json)
+
+```
+
+```{r}
+library(tibble)
+library(dplyr)
+
+# Transforma a lista em data frame
+dados_df <- tibble::enframe(dados_json, name = "pokemon", value = "atributos") %>%
+  tidyr::unnest_wider(atributos)
+
+#View(dados_df)
+head(dados_df)
+
+```
+
+# Leitura de Arquivo parquet
+
+O conjunto de dados “starship.parquet” foi obtido no site “Kaggle”, neste link: <https://www.kaggle.com/datasets/jsphyg/star-wars.>
+
+O banco contém 60 observações e 16 variáveis.
+
+Para ler o arquivo no formato parquet usando o RStudio, foi necessário instalar o pacote chamado “arrow”. Após a instalação do pacote, basta utilizar o comando read_parquet(“nome_do_arquivo”).
+
+```{r}
+#install.packages("arrow")   
+library(arrow)
+```
+
+```{r}
+dados_parquet <- read_parquet("starships.parquet")
+#View(dados_parquet)
+head(dados_parquet)
+```
