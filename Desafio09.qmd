@@ -1,0 +1,142 @@
+---
+title: "Desafio 09"
+author: "Julia Folgueral"
+format:
+  html: 
+      self-contained: true 
+editor: visual
+---
+```{r, echo = FALSE}
+# Adicionar a data e hora que o html foi gerado:
+cat("Este arquivo foi gerado em:", format(Sys.time(), "%d/%m/%Y %H:%M:%S"))
+```
+
+```{r}
+# comando para dia e hora da renderização
+```
+
+```{r}
+# Instalando pacotes necessários
+#install.packages(c("readr", "RSQLite"), dep=TRUE, type='win.binary')
+```
+
+```{r}
+library(RSQLite)
+library(readr)
+library(tidyverse)
+```
+
+1. Crie um arquivo de banco de dados em SQLite chamado voos.sqlite3. (Dica: o comando dbConnect() se conecta num banco de dados se o arquivo apontado existir ou cria um novo, caso o arquivo não exista.)
+
+```{r}
+# Criar/conectar ao banco de dados SQLite
+con <- dbConnect(SQLite(), "voos.sqlite3")
+
+# Verificar a conexão
+#con
+```
+
+2. Leia os arquivos airlines.csv e airports.csv. Deposite o conteúdo de cada um destes arquivos nas tabelas, respectivamente, airlines e airports. Utilize o comando dbWriteTable() para isso.
+
+```{r}
+# Ler os arquivos CSV
+airlines <- read_csv("airlines.csv")
+airports <- read_csv("airports.csv")
+
+# Depositar os data frames no banco como tabelas
+dbWriteTable(con, "airlines", airlines, overwrite = TRUE)
+dbWriteTable(con, "airports", airports, overwrite = TRUE)
+
+# Conferir se as tabelas foram criadas
+dbListTables(con)
+
+```
+
+3. Crie uma função chamada lerDados contendo 2 argumentos, input e pos. A função deve apresentar ao usuário uma mensagem de progresso da leitura do arquivo flights.csv (utilize o comando message()), aos moldes do apresentado abaixo. A função deve salvar apenas os vôos que partiram ou chegaram aos seguintes aeroportos BWI, MIA, SEA, SFO e JFK, numa tabela chamada flights. Observe que a função não deve retornar nada para o usuário, deve apenas gravar a tabela obtida do chunk no banco de dados. (Dica: utilize o comando dbWriteTable() e estude como o argumento append deve ser utilizado para permitir que os chunks intermediários sejam adicionados ao fim da tabela.)
+
+```{r}
+# Verificar o nome das colunas de read.csv
+linha1 <- read_lines("flights.csv", n_max = 1)
+
+```
+
+```{r}
+# Remover a tabela flights se já existir
+if ("flights" %in% dbListTables(con)) {
+  dbRemoveTable(con, "flights")
+}
+
+# Função callback ajustada
+lerDados <- function(input, pos) {
+  message("Leitura atingiu a linha ", pos)
+  
+  # Aeroportos de interesse
+  aeroportos_alvo <- c("BWI", "MIA", "SEA", "SFO", "JFK")
+  
+  # Seleciona apenas as colunas desejadas e filtra os aeroportos
+  input_filtrado <- input %>%
+    select(
+      YEAR, MONTH, DAY, AIRLINE, FLIGHT_NUMBER,
+      ORIGIN_AIRPORT, DESTINATION_AIRPORT, ARRIVAL_DELAY
+    ) %>%
+    filter(ORIGIN_AIRPORT %in% aeroportos_alvo |
+           DESTINATION_AIRPORT %in% aeroportos_alvo)
+  
+  # Gravar no banco, acumulando os chunks
+  dbWriteTable(con, "flights", input_filtrado, append = TRUE)
+  
+  invisible(NULL) # não retorna nada
+}
+
+# Leitura em chunks de 100.000 linhas, usando a função acima
+read_csv_chunked(
+  "flights.csv",
+  callback = SideEffectChunkCallback$new(lerDados),
+  chunk_size = 100000
+)
+
+```
+
+
+```{r}
+# TESTANDO:
+# Quantos registros foram gravados na tabela flights
+#dbGetQuery(con, "SELECT COUNT(*) AS total_voos FROM flights")
+
+# Visualizar as primeiras linhas
+#dbGetQuery(con, "SELECT * FROM flights LIMIT 5")
+
+```
+
+5. Acesse o banco de dados e, por meio de uma chamada em SQL, apresente o tempo médio de atraso de chegada por aeroporto de destino, a sigla do aeroporto, o nome completo do aeroporto e o nome completo da companhia aérea. Ordene o resultado (na mesma chamada de SQL) por ordem decrescente deste atraso médio (i.e., o primeiro registro deve ser o aeroporto que tem o maior tempo de atraso na chegada). Atente para o fato de que o mesmo nome de coluna pode acontecer em diferentes tabelas.
+
+```{r}
+library(DBI)
+
+query <- "
+SELECT 
+    f.DESTINATION_AIRPORT AS IATA,
+    a.AIRPORT AS nome_aeroporto,
+    al.AIRLINE AS nome_companhia,
+    ROUND(AVG(f.ARRIVAL_DELAY), 4) AS atraso_medio
+FROM flights f
+LEFT JOIN airports a
+       ON f.DESTINATION_AIRPORT = a.IATA_CODE
+LEFT JOIN airlines al
+       ON f.AIRLINE = al.IATA_CODE
+GROUP BY f.DESTINATION_AIRPORT, a.AIRPORT, al.AIRLINE
+ORDER BY atraso_medio DESC
+"
+
+# Executar a query e salvar o resultado
+resultado <- dbGetQuery(con, query)
+
+# Visualizar as primeiras 10 linhas
+head(resultado, 10)
+
+```
+
+```{r}
+dbDisconnect(con)
+```
+
