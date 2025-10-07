@@ -1,0 +1,200 @@
+---
+title: "Desafio 11"
+author: "Julia Folgueral - RA: 277178"
+format: 
+  html:
+    self-contained: true
+editor: visual
+---
+
+```{r, echo = FALSE}
+# Adicionar a data e hora que o html foi gerado:
+cat("Este arquivo foi gerado em:", format(Sys.time(), "%d/%m/%Y %H:%M:%S"))
+```
+
+```{r}
+# Carregar a biblioteca reticulate para usar o python
+#library(reticulate)
+```
+
+```{python}
+# Instalar bibliotecas
+#!pip install polars
+#!pip install pandas
+```
+
+```{python}
+# Importar o polars
+import polars as pl
+```
+
+1. Utilizando o arquivo renda_adulta.csv e sabendo que ele não possui cabeçalho, faça a importação do banco de dados utilizando os nomes das colunas conforme apresentado acima e na sequência ali indicada. No momento da importação do arquivo, você deve, também, indicar os tipos de cada uma das colunas. Utilize o fato de que o símbolo ? representa valores faltantes.
+
+```{python}
+# Lista de nomes das colunas
+colunas = [
+    "age", "workclass", "fnlwgt", "education", "education-num",
+    "marital-status", "occupation", "relationship", "race", "sex",
+    "capital-gain", "capital-loss", "hours-per-week",
+    "native-country", "income"
+]
+
+# Especificação dos tipos de cada coluna
+tipos = {
+    "age": pl.Int64,
+    "workclass": pl.Categorical,
+    "fnlwgt": pl.Int64,
+    "education": pl.Categorical,
+    "education-num": pl.Int64,
+    "marital-status": pl.Categorical,
+    "occupation": pl.Categorical,
+    "relationship": pl.Categorical,
+    "race": pl.Categorical,
+    "sex": pl.Categorical,
+    "capital-gain": pl.Int64,
+    "capital-loss": pl.Int64,
+    "hours-per-week": pl.Int64,
+    "native-country": pl.Categorical,
+    "income": pl.Categorical
+}
+
+# Leitura do arquivo CSV compactado
+renda = pl.read_csv(
+    "renda_adulta.csv.gz",
+    has_header=False,      # sem cabeçalho
+    new_columns=colunas,   # nomes das colunas
+    null_values="?",       # trata "?" como valor ausente
+    dtypes=tipos,          # tipos das colunas
+    infer_schema_length=0, # força o uso dos tipos fornecidos
+)
+
+# Visualizar as primeiras linhas
+renda.head()
+
+
+```
+
+2. Apresente os tipos de cada uma das coluna.
+
+```{python}
+# Mostra o nome das colunas e seus respectivos tipos
+renda.schema
+```
+
+3. Apresente as dimensões da tabela de dados.
+
+```{python}
+# Mostra o número de linhas e de colunas (n_linhas, n_colunas)
+renda.shape 
+```
+4. Quantas pessoas recebem acima de $50.000 e quantas pessoas recebem abaixo deste limiar?
+
+```{python}
+# agrupa por renda e conta a quantidade de pessoas em cada categoria
+renda.group_by("income").count().sort("count", descending=True)
+```
+
+5. Crie um objeto chamado renda_longo, no qual você transforma as colunas capital-gain e capital-loss (formato wide) para formato longo. Os valores destas variáveis devem ser armazenados numa nova coluna chamada Valor e os tipos de valores (gain e loss) devem ser armazenados numa coluna chamada tipo.
+
+```{python}
+renda_longo = renda.melt(
+    id_vars=[  # colunas que não mudam
+        "age", "workclass", "fnlwgt", "education", "education-num",
+        "marital-status", "occupation", "relationship", "race", "sex",
+        "hours-per-week", "native-country", "income"
+    ],
+    value_vars=["capital-gain", "capital-loss"],  # colunas que serão empilhadas
+    variable_name="tipo",   # nome da nova coluna que indica o tipo
+    value_name="Valor"      #
+)
+
+# Deixar os nomes confrome pedido no enunciado
+renda_longo = renda_longo.with_columns(
+    pl.col("tipo").str.replace("capital-", "")
+)
+
+# Visualizar as primeiras linhas
+renda_longo.head()
+
+```
+6. Quais são as médias de horas trabalhadas por classe salarial?
+
+```{python}
+# Agrupa pela classe salarial
+renda.group_by("income").agg(
+    pl.col("hours-per-week").mean().alias("media_horas")
+)
+
+# Dentro de cada grupo (<=50K e >50K), calcula a média da coluna 'hours-per-week' função .mean() faz a média e .alias("media_horas") dá um nome à nova coluna resultante.
+```
+7. Se cada linha representa uma pessoa, quantas pessoas foram amostradas em cada profissão?
+
+```{python}
+# Agrupa pela coluna "occupation", conta quantas linhas (=pessoas) em cada occupation e ordena de forma decrescente
+renda.group_by("occupation").count().sort("count", descending=True)
+```
+8. Crie um gráfico de barras que apresente o número médio de horas trabalhadas semanalmente em função do nível salarial.
+
+```{python}
+# Instalar matplotlib
+#!pip install matplotlib
+```
+```{python}
+import matplotlib
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
+```
+
+
+```{python}
+# Calcula a média de horas por classe salarial
+media_horas = (
+    renda.group_by("income")
+         .agg(pl.col("hours-per-week").mean().alias("media_horas"))
+         .sort("income")  # opcional: ordenar por salário
+)
+
+# Faz conversões para usar listas para o matplotlib
+salario = media_horas["income"].to_list()
+horas = media_horas["media_horas"].to_list()
+
+# Gráfico de barras
+plt.figure(figsize=(6,4))
+plt.bar(salario, horas, color=["darkblue", "blue"])
+plt.xlabel("Classe Salarial")
+plt.ylabel("Média de horas trabalhadas por semana")
+plt.title("Média de horas trabalhadas por semana por nível salarial")
+plt.ylim(0, max(horas)+5)  # deixa um espaço acima das barras
+plt.show()
+
+```
+ 9. Desafio: existe alguma evidência de discriminação salarial entre gêneros biológicos?
+ 
+```{python}
+# Total de pessoas por gênero
+sexo_total = (
+    renda.group_by("sex")
+         .agg(pl.count().alias("total"))
+)
+
+# Total de pessoas com renda >50K por gênero
+sexo_maior50k = (
+    renda.filter(pl.col("income") == ">50K")
+         .group_by("sex")
+         .agg(pl.count().alias("maior50k"))
+)
+
+# Junta os dois resultados de cima
+proporcao = sexo_total.join(sexo_maior50k, on="sex", how="left")
+
+# Calcula a porcentagem de pessoas com renda >50K por gênero
+proporcao = proporcao.with_columns(
+    (pl.col("maior50k") / pl.col("total") * 100).alias("percentual_>50K")
+)
+
+# Mostra a proporção
+proporcao.select(["sex", "percentual_>50K"])
+
+```
+ Apenas cerca de 10% das mulheres ganham acima de 50k por ano, enquanto cerca de 30% dos homens ganham acima do mesmo valor. Isso indica uma grande diferença salarial entre os genêros, trazendo evidência de discriminção salarial entre os genêros biológicos. 
