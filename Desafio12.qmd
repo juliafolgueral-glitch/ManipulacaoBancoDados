@@ -1,0 +1,190 @@
+---
+title: "Desafio 12"
+author: "Julia Folgueral - RA: 277178"
+format: 
+  html:
+    self-contained: true 
+editor: visual
+---
+
+
+```{r, echo = FALSE}
+# Adicionar a data e hora que o html foi gerado:
+cat("Este arquivo foi gerado em:", format(Sys.time(), "%d/%m/%Y %H:%M:%S"))
+```
+
+```{r}
+# Biblioteca para usar o python
+#library(reticulate)
+```
+
+```{python}
+# Importando bibliotecas do python (polars e sqlite3)
+import polars as pl
+import sqlite3
+```
+
+```{python}
+conn = sqlite3.connect('data.db') # faz a conexão com o banco de dados
+cursor = conn.cursor() # objeto que permite interagir com o banco de dados
+```
+
+```{python}
+# Executar comandos dentro do SQL
+cursor.execute('''
+CREATE TABLE vendas (
+    id INTEGER PRIMARY KEY,
+    vendedor TEXT,
+    produto TEXT,
+    valor REAL,
+    data_venda DATE
+)
+''')
+```
+```{python}
+# Aqui usamos o commit, que confirma a operação da execução.
+cursor.execute('''
+INSERT INTO vendas (vendedor, produto, valor, data_venda)
+VALUES
+    ('Ana', 'Produto A', 120.5, '2024-09-01'),
+    ('Carlos', 'Produto B', 200.0, '2024-10-02'),
+    ('Ana', 'Produto C', 150.0, '2024-09-03'),
+    ('Bruno', 'Produto A', 300.0, '2024-11-04'),
+    ('Carlos', 'Produto C', 100.0, '2024-10-05');
+''')
+conn.commit()
+```
+
+```{python}
+# Fazer uma consulta
+cursor.execute("SELECT * FROM vendas")
+rows = cursor.fetchall()
+for row in rows:
+  print(row)
+
+```
+```{python}
+# Usando SQLite e Polars
+import polars as pl
+dados = pl.read_database("SELECT * FROM vendas", conn)
+print(dados)
+
+```
+
+Qual o total de vendas por vendedor?
+
+```{python}
+# Seleciona por vendedor e soma o total de vendas
+vendas_total = pl.read_database('''
+   SELECT vendedor, SUM(valor) as total_vendas
+   FROM vendas
+   GROUP BY vendedor;
+''', conn)
+print(vendas_total)
+
+```
+Qual é o valor médio de vendas por vendedor?
+
+```{python}
+# Seleciona por vendedor e calcula a média do total de vendas
+vendas_medias = pl.read_database('''
+   SELECT vendedor, AVG(valor) as total_vendas
+   FROM vendas
+   GROUP BY vendedor;
+''', conn)
+print(vendas_medias)
+```
+Crie uma tabela contendo o nome do vendedor, o número de vendas realizadas, o total vendido e o valor médio por venda.
+
+```{python}
+# Seleciona os vendedores, conta o número de vendas, faz a soma do total das vendas e calcula a média das vendas.
+
+vendas_comb = pl.read_database("""
+SELECT vendedor, 
+       COUNT(*) as numero_vendas,
+       SUM(valor) as total_vendas, 
+       AVG(valor) as media_vendas
+FROM vendas
+GROUP BY vendedor;
+""", conn)
+
+vendas_comb
+```
+# Quais foram as vendas de R$ 200,00?
+
+```{python}
+# Seleciona as vendas com valor maior ou igual que 200
+ticket_alto = pl.read_database("""
+SELECT * FROM vendas WHERE valor >= 200
+""", conn)
+print(ticket_alto)
+
+```
+Qual foi o volume mensal de vendas?
+
+```{python}
+# Seleciona a data da venda (ano-mês), soma o valor das vendas e ordena por mês.
+vendas_mensais = pl.read_database("""
+SELECT strftime('%Y-%m', data_venda) AS mes, SUM(valor) AS total_vendas
+FROM vendas GROUP BY mes ORDER BY mes
+""", conn)
+print(vendas_mensais)
+```
+Criando a tabela de produtos
+
+```{python}
+# Cria uma tabela se os produtos não existirem
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS produtos (
+    id INTEGER PRIMARY KEY,
+    nome TEXT NOT NULL,
+    categoria TEXT NOT NULL,
+    preco REAL NOT NULL,
+    estoque INTEGER NOT NULL
+);
+''')
+cursor.execute('''
+INSERT INTO produtos (nome, categoria, preco, estoque) VALUES
+    ('Produto A', 'Categoria 1', 100.0, 50),
+    ('Produto B', 'Categoria 2', 150.0, 30),
+    ('Produto C', 'Categoria 1', 200.0, 20),
+    ('Produto D', 'Categoria 2', 250.0, 10),
+    ('Produto E', 'Categoria 3', 300.0, 0);
+''')
+conn.commit()
+```
+Consultar a tabela de produtos que foi criada acima
+
+```{python}
+# Seleciona tudo da tabela produtos
+prods = pl.read_database("SELECT * FROM produtos", conn)
+print(prods)
+
+```
+Apresente uma tabela com o nome do produto, seu valor de compra e venda, além do lucro no momento da venda.
+
+```{python}
+# Seleciona os produtos e renomeia as variáveis (preço = venda, preco-valor = lucro) da tabela vendas. Junta os produtos em vendas.produto.
+lucros = pl.read_database("""
+SELECT produto, valor AS compra, preco AS venda, preco-valor AS lucro
+FROM vendas
+INNER JOIN produtos ON vendas.produto = produtos.nome
+""", conn)
+print(lucros)
+
+```
+Qual foi o lucro médio por vendedor?
+
+```{python}
+# Seleciona os vendedores e os produtos, calcula a média do preco-valor e renomeia essa variável para lucro_medio. Junta produtos em vendas.produto e agrupa por vendedor. 
+lucro_medio = pl.read_database("""
+SELECT vendedor, produto, AVG(preco-valor) AS lucro_medio
+FROM vendas
+INNER JOIN produtos ON vendas.produto = produtos.nome
+GROUP BY vendedor
+""", conn)
+print(lucro_medio)
+```
+
+
+
