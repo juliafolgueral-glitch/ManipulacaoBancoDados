@@ -1,0 +1,181 @@
+---
+title: "Desafio 13"
+author: "Julia Folgueral - RA: 277178"
+format: 
+  html: 
+    self-contained: true
+editor: visual
+---
+
+
+```{r, echo = FALSE}
+# Adicionar a data e hora que o html foi gerado:
+cat("Este arquivo foi gerado em:", format(Sys.time(), "%d/%m/%Y %H:%M:%S"))
+```
+1. Crie um banco de dados SQLite utilizando os 3 arquivos acima. O banco de dados deve conter as seguintes tabelas: basics, ratings e principals
+
+```{python}
+import pandas as pd
+import sqlite3
+import gc #"garbage collector", usado para limpar a memória
+
+# Cria a conexão com o banco SQLite
+con = sqlite3.connect("imdb.db")
+cursor = con.cursor()
+
+# Pega o caminho dos arquivos que vamos ler e renomeia eles
+arquivos = [
+    ("title.basics0.tsv.gz", "basics"),
+    ("title.ratings.tsv.gz", "ratings"),
+    ("title.principals0.tsv.gz", "principals")
+]
+
+# Vamos fazer leitura por chuncks. Para isso, defiinimos o tamanho do chunk
+chunk_size = 500_000
+
+# Função que lê os bancos por chuncks e grava cada pedaço no banco de dados do SQL
+for file_path, table_name in arquivos:
+    print(f"\n Lendo e gravando '{table_name}' em blocos...")
+
+    # Remove tabela antiga se existir (para evitar conflitos)
+    cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+    con.commit()
+
+    i = 0
+    for chunk in pd.read_csv(
+        file_path,
+        sep="\t",
+        compression="gzip",
+        dtype=str,
+        na_values="\\N",
+        chunksize=chunk_size
+    ):
+        i += 1
+        chunk.to_sql(table_name, con, if_exists="append", index=False)
+        print(f"  Bloco {i} gravado ({len(chunk)} linhas)")
+        del chunk
+        gc.collect()
+
+    print(f" '{table_name}' concluído!")
+
+print("\n Todos os arquivos foram carregados. Conexão permanece aberta para consultas SQL.")
+
+```
+
+```{python}
+# Verificar se de fato todas as tabelas estão no banco de dados
+import pandas as pd
+
+tabelas = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", con)
+print(tabelas)
+
+
+```
+
+2. (Utilizando SQL, responda): Quais são os 5 filmes com as maiores notas (averageRating)? Apresente uma solução capaz de desempatar os filmes baseando-se no número de votos recebidos. 
+
+
+```{r}
+# Carregar bibliotecas
+library(DBI)
+library(RSQLite)
+
+# Fazer conexão com o banco
+con <- dbConnect(RSQLite::SQLite(), "movies.sqlite3")
+
+# Seleciona quais colunas vamos ter na resposta (nome do filme, nota média e número de votos). Pega da tabela "basics" (b) e junta com rantings (r). Ordena por ordem decrescente a nota média e o número de votos. Por fim, seleciona os 5 primeiros.
+query <- "
+SELECT 
+    b.primaryTitle,
+    r.averageRating,
+    r.numVotes
+FROM basics AS b
+JOIN ratings AS r
+    ON b.tconst = r.tconst
+WHERE b.titleType = 'movie'
+  AND r.numVotes >= 100   -- filtro para eliminar filmes com poucos votos
+ORDER BY r.averageRating DESC, r.numVotes DESC
+LIMIT 5;
+
+
+"
+
+top5 <- dbGetQuery(con, query)
+print(top5)
+
+
+```
+
+
+
+
+3. (Utilizando SQL, responda): Qual é o gênero mais frequente entre os filmes com nota maior que 8?
+
+```{r}
+# Seleciona o gênero mais frequente entre filmes com nota média maior que 8, separa os generos (aparecem mais de um genero por filme), juntando com a tabela "ratings", agrupando por gênero, contando a frequência e retornando apenas o mais frequente.
+query <- "
+WITH RECURSIVE split_genres(tconst, genre, rest) AS (
+    SELECT 
+        tconst,
+        TRIM(SUBSTR(genres, 1, INSTR(genres || ',', ',') - 1)) AS genre,
+        SUBSTR(genres, INSTR(genres || ',', ',') + 1) AS rest
+    FROM basics
+    WHERE genres IS NOT NULL
+    UNION ALL
+    SELECT
+        tconst,
+        TRIM(SUBSTR(rest, 1, INSTR(rest || ',', ',') - 1)) AS genre,
+        SUBSTR(rest, INSTR(rest || ',', ',') + 1) AS rest
+    FROM split_genres
+    WHERE rest <> ''
+)
+SELECT genre, COUNT(*) AS freq
+FROM split_genres AS sg
+JOIN ratings AS r ON sg.tconst = r.tconst
+WHERE r.averageRating > 8
+GROUP BY genre
+ORDER BY freq DESC
+LIMIT 1;
+"
+
+resultado <- dbGetQuery(con, query)
+
+print(resultado)
+
+
+```
+
+
+4. (Utilizando SQL, responda): Quais são os 3 atores/atrizes que mais participaram de filmes com nota maior que 7.5?
+
+```{r}
+# # Seleciona os três atores ou atrizes com mais filmes bem avaliados (nota maior que 7.5), juntando as tabelas "principals", "ratings" e "basics", agrupando por ator/atriz e categoria, contando a quantidade de filmes distintos e ordenando em ordem decrescente.
+query <- "
+SELECT 
+    p.nconst AS id_pessoa,
+    p.category AS categoria,
+    COUNT(DISTINCT p.tconst) AS qtd_filmes
+FROM principals AS p
+JOIN ratings AS r ON p.tconst = r.tconst
+JOIN basics AS b ON b.tconst = r.tconst
+WHERE r.averageRating > 7.5
+  AND p.category IN ('actor', 'actress')
+GROUP BY p.nconst, p.category
+ORDER BY qtd_filmes DESC
+LIMIT 3
+"
+
+# Executa a consulta e exibe o resultado
+top3 <- dbGetQuery(con, query)
+top3$rank <- 1:nrow(top3)  
+print(top3)
+
+```
+
+```{r}
+# Disconectar o banco de dados
+dbDisconnect(con)
+```
+
+
+                        
